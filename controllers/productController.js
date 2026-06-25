@@ -2,41 +2,48 @@ const pool = require('../config/database');
 const { AppError } = require('../middlewares/errorMiddleware');
 
 class ProductController {
-  async create(ctx) {
-    const { name, description, price, category_id, stock_quantity, options, images } = ctx.request.body;
+  create = async (ctx) => {
+    const {
+      name,
+      description,
+      price,
+      category_id,
+      stock_quantity,
+      options = [],
+      images = [],
+    } = ctx.request.body;
 
-    const client = await pool.pool.connect();
-    
+    const client = await pool.connect();
+
     try {
       await client.query('BEGIN');
 
       const { rows: productRows } = await client.query(
-        `INSERT INTO products (name, description, price, category_id, stock_quantity) 
-         VALUES ($1, $2, $3, $4, $5) 
-         RETURNING id, name, description, price, category_id, stock_quantity, created_at, updated_at`,
+        `INSERT INTO products
+         (name, description, price, category_id, stock_quantity)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
         [name, description, price, category_id, stock_quantity || 0]
       );
 
       const product = productRows[0];
 
-      if (options && options.length > 0) {
-        for (const option of options) {
-          await client.query(
-            `INSERT INTO product_options (product_id, name, value) 
-             VALUES ($1, $2, $3)`,
-            [product.id, option.name, option.value]
-          );
-        }
+      for (const option of options) {
+        await client.query(
+          `INSERT INTO product_options
+           (product_id, name, value)
+           VALUES ($1, $2, $3)`,
+          [product.id, option.name, option.value]
+        );
       }
 
-      if (images && images.length > 0) {
-        for (const url of images) {
-          await client.query(
-            `INSERT INTO product_images (product_id, url) 
-             VALUES ($1, $2)`,
-            [product.id, url]
-          );
-        }
+      for (const url of images) {
+        await client.query(
+          `INSERT INTO product_images
+           (product_id, url)
+           VALUES ($1, $2)`,
+          [product.id, url]
+        );
       }
 
       await client.query('COMMIT');
@@ -55,27 +62,36 @@ class ProductController {
     } finally {
       client.release();
     }
-  }
+  };
 
-  async update(ctx) {
+  update = async (ctx) => {
     const { id } = ctx.params;
-    const { name, description, price, category_id, stock_quantity, options, images } = ctx.request.body;
+    const {
+      name,
+      description,
+      price,
+      category_id,
+      stock_quantity,
+      options,
+      images,
+    } = ctx.request.body;
 
-    const client = await pool.pool.connect();
-    
+    const client = await pool.connect();
+
     try {
       await client.query('BEGIN');
 
       const { rows } = await client.query(
-        `UPDATE products 
-         SET name = COALESCE($1, name), 
-             description = COALESCE($2, description), 
-             price = COALESCE($3, price), 
-             category_id = COALESCE($4, category_id),
-             stock_quantity = COALESCE($5, stock_quantity),
-             updated_at = NOW() 
-         WHERE id = $6 
-         RETURNING id, name, description, price, category_id, stock_quantity, created_at, updated_at`,
+        `UPDATE products
+         SET
+           name = COALESCE($1, name),
+           description = COALESCE($2, description),
+           price = COALESCE($3, price),
+           category_id = COALESCE($4, category_id),
+           stock_quantity = COALESCE($5, stock_quantity),
+           updated_at = NOW()
+         WHERE id = $6
+         RETURNING *`,
         [name, description, price, category_id, stock_quantity, id]
       );
 
@@ -83,13 +99,13 @@ class ProductController {
         throw new AppError('Product not found', 404);
       }
 
-      const product = rows[0];
-
       if (options !== undefined) {
         await client.query('DELETE FROM product_options WHERE product_id = $1', [id]);
+
         for (const option of options) {
           await client.query(
-            `INSERT INTO product_options (product_id, name, value) 
+            `INSERT INTO product_options
+             (product_id, name, value)
              VALUES ($1, $2, $3)`,
             [id, option.name, option.value]
           );
@@ -98,9 +114,11 @@ class ProductController {
 
       if (images !== undefined) {
         await client.query('DELETE FROM product_images WHERE product_id = $1', [id]);
+
         for (const url of images) {
           await client.query(
-            `INSERT INTO product_images (product_id, url) 
+            `INSERT INTO product_images
+             (product_id, url)
              VALUES ($1, $2)`,
             [id, url]
           );
@@ -122,9 +140,9 @@ class ProductController {
     } finally {
       client.release();
     }
-  }
+  };
 
-  async delete(ctx) {
+  delete = async (ctx) => {
     const { id } = ctx.params;
 
     const { rows } = await pool.query(
@@ -140,10 +158,11 @@ class ProductController {
       success: true,
       message: 'Product deleted successfully',
     };
-  }
+  };
 
-  async getById(ctx) {
+  getById = async (ctx) => {
     const { id } = ctx.params;
+
     const product = await this.getProductById(id);
 
     if (!product) {
@@ -154,9 +173,9 @@ class ProductController {
       success: true,
       data: product,
     };
-  }
+  };
 
-  async list(ctx) {
+  list = async (ctx) => {
     const {
       search,
       category_id,
@@ -166,8 +185,8 @@ class ProductController {
       limit = 10,
     } = ctx.query;
 
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
     const offset = (pageNum - 1) * limitNum;
 
     const whereConditions = [];
@@ -198,32 +217,39 @@ class ProductController {
       paramIndex++;
     }
 
-    const whereClause = whereConditions.length > 0 
-      ? `WHERE ${whereConditions.join(' AND ')}` 
-      : '';
+    const whereClause =
+      whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
 
-    const countQuery = `SELECT COUNT(*) as total FROM products p ${whereClause}`;
+    const countQuery = `
+      SELECT COUNT(*) AS total
+      FROM products p
+      ${whereClause}
+    `;
+
     const { rows: countRows } = await pool.query(countQuery, values);
-    const total = parseInt(countRows[0].total);
+    const total = parseInt(countRows[0].total, 10);
 
     const productsQuery = `
-      SELECT 
-        p.id, p.name, p.description, p.price, p.category_id, p.stock_quantity,
-        p.created_at, p.updated_at, c.name as category_name
+      SELECT
+        p.*,
+        c.name AS category_name
       FROM products p
-      LEFT JOIN categories c ON p.category_id = c.id
+      LEFT JOIN categories c
+        ON p.category_id = c.id
       ${whereClause}
       ORDER BY p.created_at DESC
-      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+      LIMIT $${paramIndex}
+      OFFSET $${paramIndex + 1}
     `;
-    
-    const { rows: products } = await pool.query(
-      productsQuery,
-      [...values, limitNum, offset]
-    );
+
+    const { rows: products } = await pool.query(productsQuery, [
+      ...values,
+      limitNum,
+      offset,
+    ]);
 
     const productsWithRelations = await Promise.all(
-      products.map(product => this.getProductById(product.id))
+      products.map((product) => this.getProductById(product.id))
     );
 
     ctx.body = {
@@ -238,15 +264,16 @@ class ProductController {
         },
       },
     };
-  }
+  };
 
-  async getProductById(id) {
+  getProductById = async (id) => {
     const { rows } = await pool.query(
-      `SELECT 
-        p.id, p.name, p.description, p.price, p.category_id, p.stock_quantity,
-        p.created_at, p.updated_at, c.name as category_name
+      `SELECT
+        p.*,
+        c.name AS category_name
       FROM products p
-      LEFT JOIN categories c ON p.category_id = c.id
+      LEFT JOIN categories c
+        ON p.category_id = c.id
       WHERE p.id = $1`,
       [id]
     );
@@ -256,19 +283,20 @@ class ProductController {
     const product = rows[0];
 
     const { rows: optionsRows } = await pool.query(
-      'SELECT id, name, value, created_at FROM product_options WHERE product_id = $1',
+      `SELECT * FROM product_options WHERE product_id = $1`,
       [id]
     );
-    product.options = optionsRows;
 
     const { rows: imagesRows } = await pool.query(
-      'SELECT id, url, created_at FROM product_images WHERE product_id = $1',
+      `SELECT * FROM product_images WHERE product_id = $1`,
       [id]
     );
+
+    product.options = optionsRows;
     product.images = imagesRows;
 
     return product;
-  }
+  };
 }
 
 module.exports = new ProductController();

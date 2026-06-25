@@ -1,12 +1,15 @@
 const Router = require('koa-router');
+const Joi = require('joi');
+
 const productController = require('../controllers/productController');
 const { validate } = require('../middlewares/validationMiddleware');
 const { authenticate, requireAdmin } = require('../middlewares/authMiddleware');
-const Joi = require('joi');
 
-const router = new Router();
+const router = new Router({
+  prefix: '/api/v1/products'
+});
 
-const createSchema = Joi.object({
+const createProductSchema = Joi.object({
   name: Joi.string().required().min(1).max(255),
   description: Joi.string().optional().allow(''),
   price: Joi.number().required().positive(),
@@ -19,7 +22,7 @@ const createSchema = Joi.object({
   images: Joi.array().optional().items(Joi.string().uri()),
 });
 
-const updateSchema = Joi.object({
+const updateProductSchema = Joi.object({
   name: Joi.string().min(1).max(255).optional(),
   description: Joi.string().optional().allow(''),
   price: Joi.number().positive().optional(),
@@ -32,11 +35,37 @@ const updateSchema = Joi.object({
   images: Joi.array().optional().items(Joi.string().uri()),
 });
 
-router.post('/', authenticate, requireAdmin, validate(createSchema), productController.create);
-router.put('/:id', authenticate, requireAdmin, validate(updateSchema), productController.update);
-router.delete('/:id', authenticate, requireAdmin, productController.delete);
+router.post(
+  '/',
+  authenticate,
+  requireAdmin,
+  validate(createProductSchema),
+  productController.create
+);
 
-router.get('/:id', productController.getById);
-router.get('/', productController.list);
+router.get(
+  '/',
+  productController.list
+);
+
+router.get(
+  '/:id',
+  productController.getById
+);
+
+router.put(
+  '/:id',
+  authenticate,
+  requireAdmin,
+  validate(updateProductSchema),
+  productController.update
+);
+
+router.delete(
+  '/:id',
+  authenticate,
+  requireAdmin,
+  productController.delete
+);
 
 module.exports = router;

@@ -1,4 +1,3 @@
--- Create users table
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email VARCHAR(255) UNIQUE NOT NULL,
@@ -11,7 +10,6 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 
--- Insert default admin if not exists
 INSERT INTO users (email, password, role) 
 VALUES (
     'admin@example.com', 
@@ -19,7 +17,6 @@ VALUES (
     'admin'
 ) ON CONFLICT (email) DO NOTHING;
 
--- Create categories table
 CREATE TABLE IF NOT EXISTS categories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) UNIQUE NOT NULL,
@@ -30,7 +27,6 @@ CREATE TABLE IF NOT EXISTS categories (
 
 CREATE INDEX IF NOT EXISTS idx_categories_name ON categories(name);
 
--- Create products table
 CREATE TABLE IF NOT EXISTS products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
@@ -46,7 +42,6 @@ CREATE INDEX IF NOT EXISTS idx_products_name ON products(name);
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
 CREATE INDEX IF NOT EXISTS idx_products_price ON products(price);
 
--- Create product_options table
 CREATE TABLE IF NOT EXISTS product_options (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     product_id UUID REFERENCES products(id) ON DELETE CASCADE,
@@ -58,7 +53,6 @@ CREATE TABLE IF NOT EXISTS product_options (
 CREATE INDEX IF NOT EXISTS idx_product_options_product ON product_options(product_id);
 CREATE INDEX IF NOT EXISTS idx_product_options_name ON product_options(name);
 
--- Create product_images table
 CREATE TABLE IF NOT EXISTS product_images (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     product_id UUID REFERENCES products(id) ON DELETE CASCADE,
@@ -68,7 +62,6 @@ CREATE TABLE IF NOT EXISTS product_images (
 
 CREATE INDEX IF NOT EXISTS idx_product_images_product ON product_images(product_id);
 
--- Insert sample categories if they don't exist
 INSERT INTO categories (name, description) 
 SELECT 'Electronics', 'Electronic devices and gadgets'
 WHERE NOT EXISTS (SELECT 1 FROM categories WHERE name = 'Electronics');
