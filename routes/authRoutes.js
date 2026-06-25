@@ -1,10 +1,13 @@
 const Router = require('koa-router');
+const Joi = require('joi');
+
 const authController = require('../controllers/authController');
 const { validate } = require('../middlewares/validationMiddleware');
 const { authenticate } = require('../middlewares/authMiddleware');
-const Joi = require('joi');
 
-const router = new Router();
+const router = new Router({
+  prefix: '/api/v1/auth'
+});
 
 const registerSchema = Joi.object({
   email: Joi.string().email().required(),
@@ -17,8 +20,22 @@ const loginSchema = Joi.object({
   password: Joi.string().required(),
 });
 
-router.post('/register', validate(registerSchema), authController.register);
-router.post('/login', validate(loginSchema), authController.login);
-router.get('/profile', authenticate, authController.getProfile);
+router.post(
+  '/register',
+  validate(registerSchema),
+  authController.register
+);
+
+router.post(
+  '/login',
+  validate(loginSchema),
+  authController.login
+);
+
+router.get(
+  '/profile',
+  authenticate,
+  authController.getProfile
+);
 
 module.exports = router;

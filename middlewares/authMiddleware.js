@@ -51,7 +51,6 @@ const requireRole = (role) => {
     await next();
   };
 };
-
 const requireAdmin = requireRole('admin');
 
 module.exports = {
@@ -59,3 +58,5 @@ module.exports = {
   requireAdmin,
   requireRole,
 };
+
+
