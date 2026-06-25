@@ -1,76 +1,81 @@
 const pool = require('../config/database');
 const { AppError } = require('../middlewares/errorMiddleware');
 
-class CategoryController {
-  async create(ctx) {
-    const { name, description } = ctx.request.body;
+const create = async (ctx) => {
+  const { name, description } = ctx.request.body;
 
-    const { rows } = await pool.query(
-      `INSERT INTO categories (name, description) 
-       VALUES ($1, $2) 
-       RETURNING id, name, description, created_at, updated_at`,
-      [name, description]
-    );
+  const { rows } = await pool.query(
+    'INSERT INTO categories (name, description) VALUES ($1, $2) RETURNING *',
+    [name, description || null]
+  );
 
-    ctx.status = 201;
-    ctx.body = {
-      success: true,
-      message: 'Category created successfully',
-      data: rows[0],
-    };
+  ctx.status = 201;
+  ctx.body = {
+    success: true,
+    message: 'Category created successfully',
+    data: rows[0],
+  };
+};
+
+const update = async (ctx) => {
+  const { id } = ctx.params;
+  const { name, description } = ctx.request.body;
+
+  const { rows } = await pool.query(
+    `UPDATE categories
+     SET name = COALESCE($1, name),
+         description = COALESCE($2, description),
+         updated_at = NOW()
+     WHERE id = $3
+     RETURNING *`,
+    [name || null, description || null, id]
+  );
+
+  if (rows.length === 0) {
+    throw new AppError('Category not found', 404);
   }
 
-  async update(ctx) {
-    const { id } = ctx.params;
-    const { name, description } = ctx.request.body;
+  ctx.body = {
+    success: true,
+    message: 'Category updated successfully',
+    data: rows[0],
+  };
+};
 
-    const { rows } = await pool.query(
-      `UPDATE categories 
-       SET name = $1, description = $2, updated_at = NOW() 
-       WHERE id = $3 
-       RETURNING id, name, description, created_at, updated_at`,
-      [name, description, id]
-    );
+const remove = async (ctx) => {
+  const { id } = ctx.params;
 
-    if (rows.length === 0) {
-      throw new AppError('Category not found', 404);
-    }
+  const { rows } = await pool.query(
+    'DELETE FROM categories WHERE id = $1 RETURNING *',
+    [id]
+  );
 
-    ctx.body = {
-      success: true,
-      message: 'Category updated successfully',
-      data: rows[0],
-    };
+  if (rows.length === 0) {
+    throw new AppError('Category not found', 404);
   }
 
-  async delete(ctx) {
-    const { id } = ctx.params;
+  ctx.body = {
+    success: true,
+    message: 'Category deleted successfully',
+    data: rows[0],
+  };
+};
 
-    const { rows } = await pool.query(
-      'DELETE FROM categories WHERE id = $1 RETURNING id',
-      [id]
-    );
+const list = async (ctx) => {
+  const { rows } = await pool.query(
+    'SELECT * FROM categories ORDER BY created_at DESC'
+  );
 
-    if (rows.length === 0) {
-      throw new AppError('Category not found', 404);
-    }
+  ctx.body = {
+    success: true,
+    message: 'Categories fetched successfully',
+    data: rows,
+  };
+};
 
-    ctx.body = {
-      success: true,
-      message: 'Category deleted successfully',
-    };
-  }
-
-  async list(ctx) {
-    const { rows } = await pool.query(
-      'SELECT id, name, description, created_at, updated_at FROM categories ORDER BY name'
-    );
-
-    ctx.body = {
-      success: true,
-      data: rows,
-    };
-  }
-}
-
-module.exports = new CategoryController();
+module.exports = {
+  create,
+  update,
+  delete: remove,
+  list,
+};

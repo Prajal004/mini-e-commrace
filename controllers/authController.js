@@ -5,7 +5,7 @@ const { AppError } = require('../middlewares/errorMiddleware');
 
 class AuthController {
   async register(ctx) {
-    const { email, password, role } = ctx.request.body;
+    const { email, password, role } = ctx.request.body;  // Removed name
 
     const { rows: existing } = await pool.query(
       'SELECT id FROM users WHERE email = $1',
@@ -20,7 +20,7 @@ class AuthController {
     const userRole = role === 'admin' ? 'admin' : 'user';
 
     const { rows } = await pool.query(
-      `INSERT INTO users (email, password, role) 
+      `INSERT INTO users (email, password, role)   -- Removed name
        VALUES ($1, $2, $3) 
        RETURNING id, email, role, created_at`,
       [email, hashedPassword, userRole]

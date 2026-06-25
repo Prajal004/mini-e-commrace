@@ -3,94 +3,125 @@ const { AppError } = require('../middlewares/errorMiddleware');
 
 class ProductController {
   async create(ctx) {
-    const { name, description, price, category_id, options, images } = ctx.request.body;
+    const { name, description, price, category_id, stock_quantity, options, images } = ctx.request.body;
 
-    const { rows: productRows } = await pool.query(
-      `INSERT INTO products (name, description, price, category_id) 
-       VALUES ($1, $2, $3, $4) 
-       RETURNING id, name, description, price, category_id, created_at, updated_at`,
-      [name, description, price, category_id]
-    );
+    const client = await pool.pool.connect();
+    
+    try {
+      await client.query('BEGIN');
 
-    const product = productRows[0];
+      const { rows: productRows } = await client.query(
+        `INSERT INTO products (name, description, price, category_id, stock_quantity) 
+         VALUES ($1, $2, $3, $4, $5) 
+         RETURNING id, name, description, price, category_id, stock_quantity, created_at, updated_at`,
+        [name, description, price, category_id, stock_quantity || 0]
+      );
 
-    if (options && options.length > 0) {
-      for (const option of options) {
-        await pool.query(
-          `INSERT INTO product_options (product_id, name, value) 
-           VALUES ($1, $2, $3)`,
-          [product.id, option.name, option.value]
-        );
+      const product = productRows[0];
+
+      if (options && options.length > 0) {
+        for (const option of options) {
+          await client.query(
+            `INSERT INTO product_options (product_id, name, value) 
+             VALUES ($1, $2, $3)`,
+            [product.id, option.name, option.value]
+          );
+        }
       }
-    }
 
-    if (images && images.length > 0) {
-      for (const url of images) {
-        await pool.query(
-          `INSERT INTO product_images (product_id, url) 
-           VALUES ($1, $2)`,
-          [product.id, url]
-        );
+      if (images && images.length > 0) {
+        for (const url of images) {
+          await client.query(
+            `INSERT INTO product_images (product_id, url) 
+             VALUES ($1, $2)`,
+            [product.id, url]
+          );
+        }
       }
+
+      await client.query('COMMIT');
+
+      const fullProduct = await this.getProductById(product.id);
+
+      ctx.status = 201;
+      ctx.body = {
+        success: true,
+        message: 'Product created successfully',
+        data: fullProduct,
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
-
-    const fullProduct = await this.getProductById(product.id);
-
-    ctx.status = 201;
-    ctx.body = {
-      success: true,
-      message: 'Product created successfully',
-      data: fullProduct,
-    };
   }
 
   async update(ctx) {
     const { id } = ctx.params;
-    const { name, description, price, category_id, options, images } = ctx.request.body;
+    const { name, description, price, category_id, stock_quantity, options, images } = ctx.request.body;
 
-    const { rows } = await pool.query(
-      `UPDATE products 
-       SET name = $1, description = $2, price = $3, category_id = $4, updated_at = NOW() 
-       WHERE id = $5 
-       RETURNING id, name, description, price, category_id, created_at, updated_at`,
-      [name, description, price, category_id, id]
-    );
+    const client = await pool.pool.connect();
+    
+    try {
+      await client.query('BEGIN');
 
-    if (rows.length === 0) {
-      throw new AppError('Product not found', 404);
-    }
+      const { rows } = await client.query(
+        `UPDATE products 
+         SET name = COALESCE($1, name), 
+             description = COALESCE($2, description), 
+             price = COALESCE($3, price), 
+             category_id = COALESCE($4, category_id),
+             stock_quantity = COALESCE($5, stock_quantity),
+             updated_at = NOW() 
+         WHERE id = $6 
+         RETURNING id, name, description, price, category_id, stock_quantity, created_at, updated_at`,
+        [name, description, price, category_id, stock_quantity, id]
+      );
 
-    const product = rows[0];
-
-    if (options) {
-      await pool.query('DELETE FROM product_options WHERE product_id = $1', [id]);
-      for (const option of options) {
-        await pool.query(
-          `INSERT INTO product_options (product_id, name, value) 
-           VALUES ($1, $2, $3)`,
-          [id, option.name, option.value]
-        );
+      if (rows.length === 0) {
+        throw new AppError('Product not found', 404);
       }
-    }
 
-    if (images) {
-      await pool.query('DELETE FROM product_images WHERE product_id = $1', [id]);
-      for (const url of images) {
-        await pool.query(
-          `INSERT INTO product_images (product_id, url) 
-           VALUES ($1, $2)`,
-          [id, url]
-        );
+      const product = rows[0];
+
+      if (options !== undefined) {
+        await client.query('DELETE FROM product_options WHERE product_id = $1', [id]);
+        for (const option of options) {
+          await client.query(
+            `INSERT INTO product_options (product_id, name, value) 
+             VALUES ($1, $2, $3)`,
+            [id, option.name, option.value]
+          );
+        }
       }
+
+      if (images !== undefined) {
+        await client.query('DELETE FROM product_images WHERE product_id = $1', [id]);
+        for (const url of images) {
+          await client.query(
+            `INSERT INTO product_images (product_id, url) 
+             VALUES ($1, $2)`,
+            [id, url]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+
+      const fullProduct = await this.getProductById(id);
+
+      ctx.body = {
+        success: true,
+        message: 'Product updated successfully',
+        data: fullProduct,
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
-
-    const fullProduct = await this.getProductById(id);
-
-    ctx.body = {
-      success: true,
-      message: 'Product updated successfully',
-      data: fullProduct,
-    };
   }
 
   async delete(ctx) {
@@ -144,25 +175,25 @@ class ProductController {
     let paramIndex = 1;
 
     if (search) {
-      whereConditions.push(`name ILIKE $${paramIndex}`);
-      values.push(`${search}`);
+      whereConditions.push(`p.name ILIKE $${paramIndex}`);
+      values.push(`%${search}%`);
       paramIndex++;
     }
 
     if (category_id) {
-      whereConditions.push(`category_id = $${paramIndex}`);
+      whereConditions.push(`p.category_id = $${paramIndex}`);
       values.push(category_id);
       paramIndex++;
     }
 
     if (min_price) {
-      whereConditions.push(`price >= $${paramIndex}`);
+      whereConditions.push(`p.price >= $${paramIndex}`);
       values.push(min_price);
       paramIndex++;
     }
 
     if (max_price) {
-      whereConditions.push(`price <= $${paramIndex}`);
+      whereConditions.push(`p.price <= $${paramIndex}`);
       values.push(max_price);
       paramIndex++;
     }
@@ -171,13 +202,13 @@ class ProductController {
       ? `WHERE ${whereConditions.join(' AND ')}` 
       : '';
 
-    const countQuery = `SELECT COUNT(*) as total FROM products ${whereClause}`;
+    const countQuery = `SELECT COUNT(*) as total FROM products p ${whereClause}`;
     const { rows: countRows } = await pool.query(countQuery, values);
     const total = parseInt(countRows[0].total);
 
     const productsQuery = `
       SELECT 
-        p.id, p.name, p.description, p.price, p.category_id,
+        p.id, p.name, p.description, p.price, p.category_id, p.stock_quantity,
         p.created_at, p.updated_at, c.name as category_name
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
@@ -212,7 +243,7 @@ class ProductController {
   async getProductById(id) {
     const { rows } = await pool.query(
       `SELECT 
-        p.id, p.name, p.description, p.price, p.category_id,
+        p.id, p.name, p.description, p.price, p.category_id, p.stock_quantity,
         p.created_at, p.updated_at, c.name as category_name
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id

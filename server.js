@@ -1,6 +1,7 @@
 const Koa = require('koa');
 const bodyParser = require('koa-bodyparser');
-const cors = require('koa-cors');
+const cors = require('@koa/cors');
+const logger = require('koa-logger');
 require('dotenv').config();
 
 const authRoutes = require('./routes/authRoutes');
@@ -10,15 +11,20 @@ const errorMiddleware = require('./middlewares/errorMiddleware');
 
 const app = new Koa();
 
+app.use(logger());
 app.use(cors());
 app.use(bodyParser());
+
 app.use(errorMiddleware);
 
 app.use(authRoutes.routes());
+app.use(authRoutes.allowedMethods());
 app.use(categoryRoutes.routes());
+app.use(categoryRoutes.allowedMethods());
 app.use(productRoutes.routes());
+app.use(productRoutes.allowedMethods());
 
-app.use((ctx) => {
+app.use(async (ctx) => {
   ctx.status = 404;
   ctx.body = {
     success: false,

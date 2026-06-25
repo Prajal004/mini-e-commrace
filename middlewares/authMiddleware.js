@@ -1,21 +1,21 @@
-const jwt = require('koa-jwt');
 const { verifyToken } = require('../utils/jwt');
 const { AppError } = require('./errorMiddleware');
 const pool = require('../config/database');
 
-const authenticate = jwt({
-  secret: process.env.JWT_SECRET,
-  passthrough: true,
-});
-
-const verifyAuth = async (ctx, next) => {
+const authenticate = async (ctx, next) => {
   try {
-    const token = ctx.state.jwt;
+    const authHeader = ctx.headers.authorization;
     
-    if (!token) {
-      throw new AppError('Authentication required', 401);
+    if (!authHeader) {
+      throw new AppError('Authentication required. Please provide token.', 401);
     }
 
+    const parts = authHeader.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer') {
+      throw new AppError('Invalid token format. Use Bearer <token>', 401);
+    }
+
+    const token = parts[1];
     const decoded = verifyToken(token);
     
     const { rows } = await pool.query(
@@ -33,16 +33,22 @@ const verifyAuth = async (ctx, next) => {
     if (error.name === 'JsonWebTokenError') {
       throw new AppError('Invalid token', 401);
     }
+    if (error.name === 'TokenExpiredError') {
+      throw new AppError('Token expired', 401);
+    }
     throw error;
   }
 };
 
 const requireRole = (role) => {
-  return (ctx, next) => {
+  return async (ctx, next) => {
+    if (!ctx.user) {
+      throw new AppError('Authentication required', 401);
+    }
     if (ctx.user.role !== role) {
       throw new AppError(`Access denied. Required role: ${role}`, 403);
     }
-    return next();
+    await next();
   };
 };
 
@@ -50,7 +56,6 @@ const requireAdmin = requireRole('admin');
 
 module.exports = {
   authenticate,
-  verifyAuth,
   requireAdmin,
   requireRole,
 };
